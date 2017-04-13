@@ -15,6 +15,7 @@
 #endif
 
 #include <stdio.h>
+#include <assert.h>
 
 int main(int argc, char *argv[]) {
     UA_Client *client = UA_Client_new(UA_ClientConfig_standard);
@@ -53,20 +54,29 @@ int main(int argc, char *argv[]) {
     retval = UA_Client_readValueAttribute(client, UA_NODEID_NUMERIC(0, UA_NS0ID_SERVER_NAMESPACEARRAY), valString);
     if(retval == UA_STATUSCODE_GOOD && !UA_Variant_isScalar(valString) &&
        valString->type == &UA_TYPES[UA_TYPES_STRING]) {
-            /* This is an array and you should loop but, meh */
-            printf("the value is: %.*s\n", (int) ((UA_String *)valString->data)->length, ((UA_String *)valString->data)->data);
+            if (valString->arrayDimensionsSize == 0){ /* The array should be 1D */
+                /* Initialize buffers */
+                UA_UInt16 nsI = 13; /* Holds the namespace Index */
+                char *nsUriData = malloc(65535 * sizeof(UA_Byte));
+                UA_String nsUri; /* Holds the namespace Uri and Uri string length*/
+                for(size_t j=0; j < (valString->arrayLength); j++){ /* Everything is stored in an array in the end */
+                    nsUri.length = (size_t) snprintf(nsUriData, 65535, "%.*s",
+                                                (int) ((UA_String *)valString->data)[j].length,
+                                                ((UA_String *)valString->data)[j].data);
+                    nsUri.data = (UA_Byte *) nsUriData;
+                    printf("Testing UA_Client_NamespaceGetIndex() using the URI %.*s \n", 
+                        (int) nsUri.length, nsUri.data);
+                    retval = UA_Client_NamespaceGetIndex(client, &nsUri, &nsI);
+                    if(retval == UA_STATUSCODE_GOOD)
+                        printf("Testing UA_Client_NamespaceGetIndex() - nsI = %d\n", nsI);
+                    else
+                        printf("Testing UA_Client_NamespaceGetIndex(): Bad status code returned %08x\n", retval);
+                    memset(nsUriData, 0, 65535);
+                }
+                free (nsUriData);
+            }
     }
 
-    UA_UInt16 nsI = 13;
-    char *nsUriData = malloc(65535);
-    UA_String nsUri;
-    nsUri.length = (size_t) snprintf(nsUriData, 65535, "%.*s", (int) ((UA_String *)valString->data)->length, ((UA_String *)valString->data)->data);
-    nsUri.data = (UA_Byte *) nsUriData;
-    printf("Testing UA_Client_NamespaceGetIndex() for %.*s \n", (int) nsUri.length, nsUri.data);
-    retval = UA_Client_NamespaceGetIndex(client, &nsUri, &nsI);
-    if(retval == UA_STATUSCODE_GOOD) printf("Testing UA_Client_NamespaceGetIndex() - nsI = %d\n", nsI);
-    else printf("Testing UA_Client_NamespaceGetIndex(): Bad status code returned %08x\n", retval);
-    free (nsUriData);
     UA_Variant_delete(valString);
 
     UA_Client_disconnect(client);
